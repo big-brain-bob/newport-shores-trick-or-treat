@@ -12,7 +12,9 @@ const liveListeners=new Set();
 let changeVersion=0;
 // Live walker locations: memory only, never written to BUCKET; dropped after WALKER_TTL without an update.
 const walkers=new Map(),WALKER_TTL=120000;
-function walkerList(){const now=Date.now(),list=[];for(const [id,w] of walkers){if(now-w.t>WALKER_TTL){walkers.delete(id);continue}list.push({id,name:w.name,out:w.out,x:w.x,y:w.y})}return list}
+// Pointer colors; each active walker holds one exclusively (keep in sync with WALKER_COLORS in map.html).
+const WALKER_COLORS=['#1668d0','#d9620b','#7d3cb5','#c2257a','#0b8580','#7a4a1e','#222831','#a87f00'];
+function walkerList(){const now=Date.now(),list=[];for(const [id,w] of walkers){if(now-w.t>WALKER_TTL){walkers.delete(id);continue}list.push({id,name:w.name,color:w.color,out:w.out,x:w.x,y:w.y})}return list}
 function liveStream(req,env){
  let stop=()=>{};
  const stream=new ReadableStream({start(controller){
@@ -92,10 +94,13 @@ export default {async fetch(req,env){
    if(typeof body?.id!=='string'||!/^[A-Za-z0-9-]{8,64}$/.test(body.id))return json({error:'Invalid walker'},400);
    if(body.off===true){walkers.delete(body.id);return json({ok:true})}
    const name=typeof body.name==='string'?body.name.trim().slice(0,32):'';
-   if(body.out===true){if(!walkers.has(body.id)&&walkers.size>=200)return json({error:'Too many walkers'},429);walkers.set(body.id,{name,out:true,x:null,y:null,t:Date.now()});return json({ok:true})}
+   if(!WALKER_COLORS.includes(body.color))return json({error:'Invalid color'},400);
+   const taken=walkerList().filter(w=>w.id!==body.id).map(w=>w.color);
+   if(taken.includes(body.color))return json({error:'Color taken',taken},409);
+   if(body.out===true){if(!walkers.has(body.id)&&walkers.size>=200)return json({error:'Too many walkers'},429);walkers.set(body.id,{name,color:body.color,out:true,x:null,y:null,t:Date.now()});return json({ok:true})}
    if(!Number.isFinite(body.x)||!Number.isFinite(body.y)||body.x<0||body.x>1400||body.y<0||body.y>1340)return json({error:'Invalid location'},400);
    if(!walkers.has(body.id)&&walkers.size>=200)return json({error:'Too many walkers'},429);
-   walkers.set(body.id,{name,out:false,x:Math.round(body.x*10)/10,y:Math.round(body.y*10)/10,t:Date.now()});
+   walkers.set(body.id,{name,color:body.color,out:false,x:Math.round(body.x*10)/10,y:Math.round(body.y*10)/10,t:Date.now()});
    return json({ok:true});
   }
   return json({error:'Not found'},404);
