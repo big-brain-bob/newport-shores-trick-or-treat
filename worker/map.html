@@ -55,7 +55,8 @@ connectLive();window.addEventListener('online',()=>{sync();connectLive()});docum
 window.addEventListener('pagehide',()=>{liveEvents?.close();clearInterval(fallbackTimer)});
 let holdTimer=null,suppressClick=false,holdPointer=null;
 function cancelHold(){clearTimeout(holdTimer);holdTimer=null;holdPointer=null}
-groups.forEach((g,i)=>{const cross=document.createElementNS('http://www.w3.org/2000/svg','path');cross.setAttribute('class','cross');cross.setAttribute('d','M -12 -12 L 12 12 M -12 12 L 12 -12');g.append(cross);
+groups.forEach((g,i)=>{const hit=g.querySelectorAll('rect')[1];if(hit){hit.setAttribute('x','-11');hit.setAttribute('y','-11');hit.setAttribute('width','22');hit.setAttribute('height','22')}// tap target = the checkbox only, not the house number
+const cross=document.createElementNS('http://www.w3.org/2000/svg','path');cross.setAttribute('class','cross');cross.setAttribute('d','M -12 -12 L 12 12 M -12 12 L 12 -12');g.append(cross);
 g.addEventListener('pointerdown',e=>{cancelHold();if(e.button!==0||!e.isPrimary)return;suppressClick=false;holdPointer=e.pointerId;holdTimer=setTimeout(()=>{holdTimer=null;holdPointer=null;suppressClick=true;toggleNoCandy(i)},600)});
 g.addEventListener('click',()=>{if(!dragged&&!suppressClick)toggle(i)});
 g.addEventListener('contextmenu',e=>e.preventDefault());
