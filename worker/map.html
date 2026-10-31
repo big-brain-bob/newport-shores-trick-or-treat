@@ -185,7 +185,9 @@ function resetNorth(){if(!mapAngle)return;const c=[view[0]+view[2]/2,view[1]+vie
 let headingUp=false;
 function rotateKeeping(deg,anchor){const a0=toView(...anchor);setMapAngle(deg);const a1=toView(...anchor);view[0]+=a1[0]-a0[0];view[1]+=a1[1]-a0[1];setView()}
 function setHeadingUp(on){headingUp=on;compass.classList.toggle('heading-mode',on)}
-function followHeading(){if(!headingUp||!currentPoint||!Number.isFinite(myHeading))return;const target=-myHeading;let d=target-mapAngle;d=((d%360)+540)%360-180;if(Math.abs(d)<3)return;rotateKeeping(mapAngle+d,currentPoint)}
+function viewCenterWorld(){const a=-mapAngle*Math.PI/180,dx=view[0]+view[2]/2-PIVOT[0],dy=view[1]+view[3]/2-PIVOT[1];return [PIVOT[0]+dx*Math.cos(a)-dy*Math.sin(a),PIVOT[1]+dx*Math.sin(a)+dy*Math.cos(a)]}
+// Out of map there is no dot to pin, so the map spins about the middle of the screen instead.
+function followHeading(){if(!headingUp||!Number.isFinite(myHeading))return;const target=-myHeading;let d=target-mapAngle;d=((d%360)+540)%360-180;if(Math.abs(d)<3)return;rotateKeeping(mapAngle+d,currentPoint||viewCenterWorld())}
 function compassTap(){
  if(headingUp||mapAngle){setHeadingUp(false);resetNorth();return}
  if(watchId===null){gpsStatus.textContent='Turn on My location to point the map the way you are facing.';return}
