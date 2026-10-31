@@ -10,10 +10,13 @@ async function authorized(req,env){const token=(req.headers.get('Cookie')||'').s
 const attempts=new Map();
 const liveListeners=new Set();
 let changeVersion=0;
+// Live walker locations: memory only, never written to BUCKET; dropped after WALKER_TTL without an update.
+const walkers=new Map(),WALKER_TTL=120000;
+function walkerList(){const now=Date.now(),list=[];for(const [id,w] of walkers){if(now-w.t>WALKER_TTL){walkers.delete(id);continue}list.push({id,name:w.name,out:w.out,x:w.x,y:w.y})}return list}
 function liveStream(req,env){
  let stop=()=>{};
  const stream=new ReadableStream({start(controller){
-  let closed=false,timer,last='',lastHeartbeat=0;const started=Date.now();
+  let closed=false,timer,last='',lastWalkers='',lastHeartbeat=0;const started=Date.now();
   const send=(event,data)=>{if(closed)return;try{controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))}catch(e){stop()}};
   const notify=mark=>send('mark',mark);
   stop=()=>{if(closed)return;closed=true;clearTimeout(timer);liveListeners.delete(notify);req.signal.removeEventListener('abort',stop);try{controller.close()}catch(e){}};
@@ -28,6 +31,7 @@ function liveStream(req,env){
     const marks=result.objects.map(o=>({id:Number(o.key.slice(6)),status:o.customMetadata?.status||'unvisited'}));
     const serialized=JSON.stringify(marks);
     if(generation===changeVersion&&serialized!==last){send('snapshot',{marks});last=serialized}
+    const walkersNow=JSON.stringify(walkerList());if(walkersNow!==lastWalkers){send('walkers',{walkers:JSON.parse(walkersNow)});lastWalkers=walkersNow}
     if(Date.now()-lastHeartbeat>15000){send('heartbeat',{ok:true});lastHeartbeat=Date.now()}
    }catch(e){send('storage-error',{error:'Shared storage unavailable'})}
    if(!closed)timer=setTimeout(tick,750);
@@ -80,6 +84,19 @@ export default {async fetch(req,env){
    await env.BUCKET.put(key,JSON.stringify({status:body.status}),{customMetadata:{status:body.status},httpMetadata:{contentType:'application/json'}});
    changeVersion++;for(const notify of liveListeners)notify({id:body.id,status:body.status});
    return json({ok:true,id:body.id,status:body.status});
+  }
+  if(path==='/api/location'&&req.method==='PUT'){
+   if(!sameOrigin(req))return json({error:'Invalid origin'},403);
+   if(Number(req.headers.get('Content-Length'))>1024)return json({error:'Request too large'},413);
+   const body=await req.json().catch(()=>null);
+   if(typeof body?.id!=='string'||!/^[A-Za-z0-9-]{8,64}$/.test(body.id))return json({error:'Invalid walker'},400);
+   if(body.off===true){walkers.delete(body.id);return json({ok:true})}
+   const name=typeof body.name==='string'?body.name.trim().slice(0,32):'';
+   if(body.out===true){if(!walkers.has(body.id)&&walkers.size>=200)return json({error:'Too many walkers'},429);walkers.set(body.id,{name,out:true,x:null,y:null,t:Date.now()});return json({ok:true})}
+   if(!Number.isFinite(body.x)||!Number.isFinite(body.y)||body.x<0||body.x>1400||body.y<0||body.y>1340)return json({error:'Invalid location'},400);
+   if(!walkers.has(body.id)&&walkers.size>=200)return json({error:'Too many walkers'},429);
+   walkers.set(body.id,{name,out:false,x:Math.round(body.x*10)/10,y:Math.round(body.y*10)/10,t:Date.now()});
+   return json({ok:true});
   }
   return json({error:'Not found'},404);
  }
